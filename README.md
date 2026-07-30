@@ -12,7 +12,7 @@ Puis, une deuxième requête API nous permet d'avoir la température ainsi que l
 De même, ces données sont envoyées à une IA (ici j'ai installé une IA locale gemma 4:e4b) qui nous envoie une petite phrase par rapport aux données.
 
 ## 4.Data Frame
-Avec cela nous pouvons faire un data frame avec __Panda__ pour afficher ces données.
+Avec cela nous pouvons faire un data frame avec __Pandas__ pour afficher ces données.
 
 ## 5.Base de données
 Enfin, ce data frame est stocké dans une base de données __SQLite__ qui est automatiquement créée si elle n'existe pas.
