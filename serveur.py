@@ -16,58 +16,62 @@ app.add_middleware(
 
 @app.get("/api/meteo")
 def recuperer_meteo(ville: str):
-    # C'est ici que vous allez coller votre logique actuelle :
-    # 1. Géocodage de la variable 'ville'
-    # 2. Récupération de la météo
-    # 3. Appel à LM Studio 
-    # 4. Enregistrement SQL (optionnel pour commencer)
-
-    # Appel à l'API de géocodage pour trouver les coordonnées de la ville
-    # 'count=1' permet de ne récupérer que le premier résultat le plus pertinent
+    # 1. Appel à l'API de géocodage
     url_geocodage = f"https://geocoding-api.open-meteo.com/v1/search?name={ville}&count=1&language=fr&format=json"
     reponse_geo = requests.get(url_geocodage)
     data_geo = reponse_geo.json()
 
-    # Gestion d'erreur simple : on vérifie si l'API a trouvé la ville
+    # CORRECTIF : Gestion d'erreur propre si la ville n'est pas trouvée
     if "results" not in data_geo or len(data_geo["results"]) == 0:
-        print(f"Désolé, la ville '{ville}' n'a pas été trouvée.")
-    else:
-        ville_trouvée = data_geo["results"][0]
-        pays = ville_trouvée["country"]
-        latitude = ville_trouvée["latitude"]
-        longitude = ville_trouvée["longitude"]
+        return {"error": f"Désolé, la ville '{ville}' n'a pas été trouvée par l'API de géocodage."}
 
-        print(f"Ville trouvée : {ville}, {pays} (Latitude: {latitude}, Longitude: {longitude})")
+    # Si la ville est trouvée, on continue l'exécution
+    ville_trouvee_data = data_geo["results"][0]
+    ville_officielle = ville_trouvee_data["name"]
+    pays = ville_trouvee_data.get("country", "Inconnu")
+    latitude = ville_trouvee_data["latitude"]
+    longitude = ville_trouvee_data["longitude"]
 
+    print(f"[OK] Ville trouvée : {ville_officielle}, {pays} (Lat: {latitude}, Lon: {longitude})")
 
-    # Récupération des données via l'API gratuite Open-Meteo pour la météo actuelle
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,relative_humidity_2m"
-    response = requests.get(url)
-    data = response.json()
+    # 2. Récupération des données météo
+    url_meteo = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&current=temperature_2m,relative_humidity_2m"
+    response_meteo = requests.get(url_meteo)
+    data_meteo = response_meteo.json()
 
     # Extraction des variables
-    heure = data["current"]["time"]
-    temperature = data["current"]["temperature_2m"]
-    humidite = data["current"]["relative_humidity_2m"]
+    heure = data_meteo["current"]["time"]
+    temperature = data_meteo["current"]["temperature_2m"]
+    humidite = data_meteo["current"]["relative_humidity_2m"]
 
+    # 3. AUTO-DÉTECTION DU MODÈLE ACTIF DANS LM STUDIO
+    URL_BASE_LM_STUDIO = "http://localhost:1234/v1"
+    
+    try:
+        # On demande à LM Studio quel modèle est chargé
+        reponse_models = requests.get(f"{URL_BASE_LM_STUDIO}/models")
+        reponse_models.raise_for_status()
+        models_data = reponse_models.json()
 
+        if not models_data.get("data"):
+            return {"error": "LM Studio est démarré mais aucun modèle n'est chargé en mémoire vive."}
+            
+        nom_modele_charge = models_data["data"][0]["id"]
+        print(f"[IA] Modèle détecté automatiquement : {nom_modele_charge}")
+        
+    except Exception as e:
+        return {"error": f"Impossible de joindre le serveur local LM Studio sur le port 1234. Est-il bien démarré ? Détail : {e}"}
 
-    # Définir l'URL du serveur local de l'IA (LM Studio) pour le chat
-    URL_API_LOCALE = "http://localhost:1234/v1/chat/completions" 
-
-    # IA locale via LM Studio
-    NOM_MODELE_LOCAL = "gemma4:e4b" 
-
-    print("Détection du modèle actif dans LM Studio...")
+    # 4. APPEL À L'IA LOCALE (LM Studio)
     prompt = (
         f"Tu es un assistant météo amical. "
-        f"Rédige une seule phrase de conseil courte et chaleureuse en français pour un utilisateur "
-        f"sachant qu'il fait actuellement {temperature}°C avec {humidite}% d'humidité dans la ville de {ville}."
+        f"Rédige une seule phrase de conseil courte et chaleureuse en français pour les habitants de {ville_officielle} "
+        f"sachant qu'il y fait actuellement {temperature}°C avec un taux d'humidité de {humidite}%."
     )
 
     # On prépare le payload (les données au format JSON attendues par le serveur local)
     payload = {
-        "model": NOM_MODELE_LOCAL,
+        "model": nom_modele_charge,
         "messages": [
             {"role": "user", "content": prompt}
         ],
@@ -78,62 +82,40 @@ def recuperer_meteo(ville: str):
         "Content-Type": "application/json"
     }
 
-    print(f"Envoi de la demande à l'IA locale ({NOM_MODELE_LOCAL})...")
-
     try:
-        # On fait une requête POST standard sur notre localhost
-        response = requests.post(URL_API_LOCALE, json=payload, headers=headers)
-        
-        # On vérifie si la requête a réussi (HTTP 200)
-        response.raise_for_status()
-        
-        # Extraction de la réponse (format standard OpenAI)
-        resultat = response.json()
-        reponse_ia = resultat["choices"][0]["message"]["content"]
+        response_ia_call = requests.post(f"{URL_BASE_LM_STUDIO}/chat/completions", json=payload, headers=headers)
+        response_ia_call.raise_for_status()
+        resultat_ia = response_ia_call.json()
+        reponse_ia = resultat_ia["choices"][0]["message"]["content"]
+        print("[IA] Réponse générée avec succès !")
+    except Exception as e:
+        print(f"[ERREUR IA] Échec : {e}")
+        reponse_ia = "Aucun conseil d'IA disponible en raison d'une erreur de traitement."
 
-        print("\nL'IA locale a répondu avec succès !")
-
-    except KeyError:
-        print("\n[ERREUR] LM Studio a rejeté la demande.")
-        # On affiche la réponse brute pour lire le message d'erreur de LM Studio
-        print("Message d'erreur de LM Studio :", response.text)
-
-    # 2. Structuration avec Pandas
-    # Pour créer un DataFrame Pandas, on organise nos données dans un dictionnaire de listes
+    # 5. Structuration avec Pandas et Enregistrement SQLite
     donnees_meteo = {
         "date_heure": [heure],
-        "ville": [ville],
+        "ville": [ville_officielle],
         "pays": [pays],
         "temperature_celsius": [temperature],
         "humidite_pourcent": [humidite],
-        "reponse_ia" : [reponse_ia]
+        "reponse_ia": [reponse_ia]
     }
 
     df = pd.DataFrame(donnees_meteo)
 
-    # On affiche le tableau Pandas dans le terminal pour vérification
-    print("--- Aperçu du tableau Pandas ---")
-    print(df)
-    print("--------------------------------")
-    print("--- Réponse de l'IA Locale ---")
-    print(reponse_ia)
-    print("------------------------------")
+    try:
+        conn = sqlite3.connect("meteo.db")
+        # On écrit dans la table
+        df.to_sql("historique_meteo", conn, if_exists="append", index=False)
+        conn.close()
+        print("[SQL] Données ajoutées avec succès dans la base 'meteo.db' !")
+    except Exception as e:
+        print(f"[ERREUR SQL] Impossible d'écrire en base de données : {e}")
 
-    # 3. Stockage dans une base de données SQL (SQLite)
-    # Connexion à la base de données (le fichier 'meteo.db' sera créé automatiquement dans votre dossier)
-    conn = sqlite3.connect("meteo.db")
-
-    # Pandas possède une fonction magique 'to_sql' pour envoyer un tableau directement en base de données.
-    # 'if_exists="append"' indique que si la table existe déjà, on ajoute la nouvelle ligne à la suite.
-    df.to_sql("historique_meteo", conn, if_exists="append", index=False)
-
-    # On ferme la connexion proprement
-    conn.close()
-
-    print("Succès : Les données ont été ajoutées à la base de données locale (meteo.db) !")
-    # Pour tester le serveur, on renvoie une fausse réponse temporaire
+    # 6. On renvoie la vraie réponse finale à notre page HTML !
     return {
-        "ville": ville,
+        "ville": ville_officielle,
         "pays": pays,
         "temperature": temperature,
         "humidite": humidite,
