@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mon Assistant Météo IA</title>
+</head>
+<body>
+    <h1>Mon Assistant Météo IA</h1>
+    <input type="text" id="cityInput" placeholder="Entrez le nom d'une ville">
+    <button id="getWeatherBtn">Consulter</button>
+    <div id="weatherResult"></div>
+</body>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin-top: 50px;
+        background-color: #f7f9fa;
+    }
+    #cityInput {
+        padding: 10px;
+        font-size: 16px;
+        width: 250px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+    }
+    #getWeatherBtn {
+        padding: 10px 20px;
+        font-size: 16px;
+        background-color: #4ca3af;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    #getWeatherBtn:hover {
+        background-color: #3b8791;
+    }
+    #weatherResult {
+        margin-top: 30px;
+        font-size: 18px;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+        padding: 20px;
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        display: none; /* Masqué par défaut */
+    }
+    .conseil {
+        margin-top: 15px;
+        font-style: italic;
+        color: #555;
+        border-top: 1px solid #eee;
+        padding-top: 15px;
+    }
+</style>
+<script>
+    document.getElementById('getWeatherBtn').addEventListener('click', async () => {
+        const city = document.getElementById('cityInput').value;
+        const resultDiv = document.getElementById('weatherResult');
+        
+        if (!city) {
+            alert("Veuillez saisir une ville !");
+            return;
+        }
+
+        resultDiv.style.display = "block";
+        resultDiv.innerText = "Recherche et consultation de l'IA en cours...";
+
+        // Appel sur le port 8000 (FastAPI) avec le paramètre 'ville'
+        fetch(`http://localhost:8000/api/meteo?ville=${city}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    resultDiv.innerText = data.error;
+                } else {
+                    // On injecte les données de météo et le conseil du LLM dans la page web
+                    resultDiv.innerHTML = `
+                        <h3>Météo à ${data.ville} (${data.pays})</h3>
+                        <p><strong>Température :</strong> ${data.temperature}°C</p>
+                        <p><strong>Humidité :</strong> ${data.humidite}%</p>
+                        <div class="conseil">
+                            <strong>Conseil de l'IA :</strong><br>
+                            "${data.conseil}"
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultDiv.innerText = 'Une erreur est survenue lors de la récupération des données.';
+            });
+    });
+</script>
+</html>

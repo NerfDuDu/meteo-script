@@ -37,7 +37,7 @@ humidite = data["current"]["relative_humidity_2m"]
 # Définir l'URL du serveur local 
 URL_API_LOCALE = "http://localhost:1234/v1/chat/completions" 
 
-# Écrivez le nom EXACT du modèle que vous avez téléchargé en local
+# IA locale via LM Studio
 NOM_MODELE_LOCAL = "gemma4:e4b" 
 
 print("Détection du modèle actif dans LM Studio...")
