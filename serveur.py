@@ -116,6 +116,7 @@ def recuperer_meteo(ville: str):
     # 6. On renvoie la vraie réponse finale à notre page HTML !
     return {
         "ville": ville_officielle,
+        "date_heure": heure,
         "pays": pays,
         "temperature": temperature,
         "humidite": humidite,
@@ -123,3 +124,19 @@ def recuperer_meteo(ville: str):
     }
 
 # Pour lancer le serveur: uvicorn serveur:app --reload
+
+@app.get("/api/historique")
+def obtenir_historique():
+    try:
+        conn = sqlite3.connect("meteo.db")
+        # On utilise Pandas pour lire toute la table SQL d'un coup
+        df = pd.read_sql_query("SELECT date_heure, ville, pays, temperature_celsius, humidite_pourcent, reponse_ia FROM historique_meteo", conn)
+        conn.close()
+        
+        # On convertit le tableau Pandas en liste de dictionnaires (format JSON)
+        # orient="records" produit un format comme : [{"ville": "Nantes", "temperature_celsius": 12}, ...]
+        donnees = df.to_dict(orient="records")
+        return donnees
+    except Exception as e:
+        # Si la table n'existe pas encore
+        return []
